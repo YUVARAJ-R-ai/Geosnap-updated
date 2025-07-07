@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -7,6 +8,8 @@ from app.models import Location, LocationCreate, User
 from app.auth import get_current_user
 from app.utils import haversine
 
+logger = logging.getLogger("uvicorn.error")
+
 router = APIRouter()
 
 # 📦 DB Dependency
@@ -14,18 +17,24 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
-# 🔒 Secure Create Location Route
+# 🔒 Create Location
 @router.post("/")
 async def create_location(
     location: LocationCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+
+# Debug the current user context
+    logger.error(f" Current user: {current_user}")
+
+    print(" Current user:", current_user)
+
     new_location = Location(
         name=location.name,
         latitude=location.latitude,
         longitude=location.longitude,
-        user_id=current_user.id  # ✅ Link to user
+        user_id=current_user.id
     )
     db.add(new_location)
     await db.commit()
@@ -55,7 +64,7 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
         ]
     }
 
-# 🔍 Search Locations by Name
+# 🔍 Search Locations
 @router.get("/search")
 async def search_locations(name: str, db: AsyncSession = Depends(get_db)):
     stmt = select(Location).where(func.lower(Location.name).like(f"%{name.lower()}%"))
@@ -72,7 +81,7 @@ async def search_locations(name: str, db: AsyncSession = Depends(get_db)):
         ]
     }
 
-# 📡 Find Nearby Locations
+# 📡 Nearby Locations
 @router.get("/nearby")
 async def nearby_locations(
     lat: float,
@@ -93,7 +102,6 @@ async def nearby_locations(
                 "lon": loc.longitude,
                 "distance_km": round(dist, 2)
             })
-
     return {"results": nearby}
 
 # 🚀 Export router

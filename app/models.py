@@ -16,7 +16,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
-    # 🔁 Reverse relationship: One user → many locations
+    # 🔁 One user → many locations
     locations = relationship("Location", back_populates="user")
 
 
@@ -25,8 +25,8 @@ class Location(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    latitude = Column(Float)
-    longitude = Column(Float)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
 
     # 🔗 Link to user who created this location
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

@@ -1,14 +1,20 @@
 from fastapi import FastAPI
-from app.autosnap import autosnap_router
-from app.fallback import fallback_router
+from fastapi.responses import RedirectResponse
+
 from app.auth import router as auth_router
+from app.autosnap import autosnap_router
 
-app = FastAPI(title="Geo FastAPI")
+app = FastAPI(
+    title="GeoSnap API",
+    description="FastAPI backend for location-based services",
+    version="1.0.0"
+)
 
-app.include_router(autosnap_router, prefix="/autosnap")
-app.include_router(fallback_router, prefix="/fallback")
-app.include_router(auth_router)
+# 🔗 Include routers
+app.include_router(auth_router)  # 🔐 /auth/register and /auth/login
+app.include_router(autosnap_router, prefix="/autosnap", tags=["Locations"])
 
-@app.get("/")
-def root():
-    return {"message": "Geo FastAPI is running"}
+# 🚪 Optional root route
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/docs")  # 📘 Redirect to Swagger UI

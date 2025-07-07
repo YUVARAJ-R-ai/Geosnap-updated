@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from passlib.context import CryptContext
@@ -9,45 +9,45 @@ from datetime import datetime, timedelta
 from app.db import AsyncSessionLocal
 from app.models import User, UserCreate, UserOut
 
-# 🔐 Setup
-router = APIRouter()
+# 🔐 JWT Config
 SECRET_KEY = "super-secret-key"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 450
 
+# 🔐 Setup
+router = APIRouter(prefix="/auth", tags=["Auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = HTTPBearer()
 
-# 🧠 Dependencies
+# 🔄 Dependency: DB Session
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
-# 🔒 Utility Functions
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+# 🔒 Utility: Password Hashing
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
+# 🔒 Utility: Token Creation
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# 🙍‍♂️ Get Current User
+# 👤 Get Current User from Token
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(oauth2_scheme),
+    token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
-):
-    token = credentials.credentials
+) -> UserOut:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
@@ -64,20 +64,23 @@ async def get_current_user(
 
     return user
 
-# 🔓 Login Endpoint
-@router.post("/auth/login")
-async def login(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.username == user.username))
-    db_user = result.scalars().first()
+# 🔓 Endpoint: Login
+@router.post("/login")
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.username == form_data.username))
+    user = result.scalars().first()
 
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    access_token = create_access_token(data={"sub": db_user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    token = create_access_token(data={"sub": user.username})
+    return {"access_token": token, "token_type": "bearer"}
 
-# 🆕 Register Endpoint
-@router.post("/auth/register", status_code=201)
+# 🆕 Endpoint: Register
+@router.post("/register", response_model=UserOut, status_code=201)
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.username == user.username))
     existing_user = result.scalars().first()
@@ -93,4 +96,10 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(new_user)
 
-    return {"message": f"User '{new_user.username}' registered successfully"}
+    return new_user
+
+
+
+
+
+
