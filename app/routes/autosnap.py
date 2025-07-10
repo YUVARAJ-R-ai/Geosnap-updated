@@ -26,6 +26,7 @@ def haversine(lat1, lon1, lat2, lon2):
 
 @router.post("/create", response_model=LocationOut)
 async def create_location(data: LocationCreate, token: str = Depends(oauth2_scheme)):
+    try:
     username = decode_access_token(token)
 
     async with AsyncSessionLocal() as session:
@@ -41,12 +42,18 @@ async def create_location(data: LocationCreate, token: str = Depends(oauth2_sche
             longitude=data.longitude,
             user_id=user.id
         )
-
+ 
         session.add(location)
         await session.commit()
         await session.refresh(location)  # ✅ Ensures full SQLAlchemy object
 
         return location  # ✅ FastAPI will now use LocationOut.from_orm(location)
+
+except Exception as e:
+        print(f"⚠️ Error in /autosnap/create: {e}")
+        raise HTTPException(status_code=500, detail=str(e))  # Temporary: shows error in Swagger
+
+
 
 @router.get("/getlocations", response_model=dict)
 async def getlocations(token: str = Depends(oauth2_scheme)):
@@ -98,6 +105,7 @@ async def nearby_locations(lat: float, lng: float, radius_km: float = 5.0):
                 nearby.append({"name": loc.name, "distance_km": round(dist, 2)})
 
         return {"nearby_locations": nearby}
+
 
 
 
